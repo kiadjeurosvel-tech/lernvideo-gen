@@ -1,0 +1,49 @@
+name: gen
+on:
+  workflow_dispatch:
+    inputs:
+      fach: {description: "Fach (leer = alle)", default: ""}
+      kapitel: {description: "Kapitel, z. B. 1,3 (leer = alle neuen)", default: ""}
+  schedule:
+    - cron: "40 8 * * *"
+    - cron: "40 15 * * *"
+permissions:
+  contents: write
+concurrency:
+  group: gen
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      LV_PASSWORD: ${{ secrets.LV_PASSWORD }}
+      VOICE: voices/de_DE-thorsten-high.onnx
+      LENGTH: "1.08"
+    steps:
+      - uses: actions/checkout@v4
+      - run: test -n "$GEMINI_API_KEY" && test -n "$LV_PASSWORD" || { echo "::error::Secrets fehlen"; exit 1; }
+      - run: sudo apt-get -qq update && sudo apt-get -qq install -y ffmpeg fonts-dejavu-core
+      - run: pip install -q piper-tts google-genai numpy soundfile pillow reportlab
+      - name: Stimme
+        run: |
+          mkdir -p voices; B=https://huggingface.co/rhasspy/piper-voices/resolve/main/de/de_DE/thorsten/high
+          curl -sfL -o voices/de_DE-thorsten-high.onnx $B/de_DE-thorsten-high.onnx
+          curl -sfL -o voices/de_DE-thorsten-high.onnx.json $B/de_DE-thorsten-high.onnx.json
+      - name: Entschlüsseln
+        run: bash crypt.sh open
+      - name: Erzeugen
+        run: |
+          if [ -n "${{ inputs.fach }}" ]; then FAECHER="${{ inputs.fach }}"; else FAECHER=$(du -s kurse/* | sort -n | awk -F/ '{print $2}'); fi
+          for F in $FAECHER; do
+            [ -d "kurse/$F" ] || continue
+            if [ -f /tmp/quota_exhausted ]; then echo "Kontingent leer – $F beim nächsten Lauf."; continue; fi
+            echo "::group::$F"
+            python3 script_gen.py "$F" "${{ inputs.kapitel }}" || echo "::warning::Skripte $F unvollständig"
+            python3 build.py "$F" "${{ inputs.kapitel }}" || echo "::warning::Videos $F Fehler"
+            python3 handout.py "$F" || echo "::warning::PDF $F Fehler"
+            bash publish.sh "$F" || echo "::warning::Veröffentlichung $F Fehler"
+            echo "::endgroup::"
+          done

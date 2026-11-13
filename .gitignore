@@ -1,0 +1,10 @@
+kurse/
+skripte/
+out/
+rel/
+voices/
+_voice.wav
+__pycache__/
+*.pdf
+*.mp4
+*.json
