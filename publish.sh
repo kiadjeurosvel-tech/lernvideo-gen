@@ -5,7 +5,7 @@ git config user.name "lernvideo-bot"; git config user.email "actions@github.com"
 bash crypt.sh state
 git add enc/state.enc
 git diff --cached --quiet || { git commit -qm "Arbeitsstand [skip ci]"; git pull -q --rebase; git push -q; }
-[ -d "out/$F" ] && [ -n "$(ls -A "out/$F")" ] || exit 0
+ls out/"$F"/*.mp4 >/dev/null 2>&1 || { rm -rf "out/$F"; exit 0; }  # nur veröffentlichen, wenn neue Videos da sind
 bash crypt.sh pack "$F"
 TAG="lv-$(echo "$F" | tr '[:upper:]' '[:lower:]')-$(date +%Y%m%d-%H%M)"
 gh release create "$TAG" "rel/$F.tar.enc" --title "$TAG" --notes "verschlüsselt" && rm -rf "out/$F" "rel/$F.tar.enc"
